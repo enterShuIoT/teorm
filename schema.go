@@ -132,6 +132,11 @@ func Parse(dest interface{}) *Schema {
 }
 
 func DataTypeOf(t reflect.Type) string {
+	// Handle pointer type
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
 	switch t.Kind() {
 	case reflect.Bool:
 		return "BOOL"
