@@ -36,10 +36,16 @@ type Field struct {
 // Parse parses a struct to a Schema
 func Parse(dest interface{}) *Schema {
 	modelType := reflect.ValueOf(dest).Type()
-	if modelType.Kind() == reflect.Ptr {
+	// Handle pointer to slice or pointer to struct
+	for modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
+	// Handle Slice
 	if modelType.Kind() == reflect.Slice {
+		modelType = modelType.Elem()
+	}
+	// Handle pointer to struct inside slice (e.g. []*Struct)
+	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
 

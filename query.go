@@ -45,7 +45,10 @@ func (db *DB) Find(dest interface{}) *DB {
 		sql += fmt.Sprintf(" OFFSET %d", tx.Statement.OffsetVal)
 	}
 
-	rows, err := db.DB.Query(sql, args...)
+	// Optimization: Inline arguments to avoid driver binding issues
+	sql = Explain(sql, args...)
+
+	rows, err := db.DB.Query(sql)
 	if err != nil {
 		tx.AddError(err)
 		return tx
@@ -82,13 +85,34 @@ func (db *DB) Find(dest interface{}) *DB {
 
 	for rows.Next() {
 		// Create a new instance of the element
-		elem := reflect.New(elemType).Elem()
+		// elemType is usually *Struct or Struct
+		// If elemType is *Struct, we need to create Struct then take Addr
+		
+		var elem reflect.Value
+		var scanElem reflect.Value // The struct we scan into
+		
+		if elemType.Kind() == reflect.Ptr {
+			// elemType is *Struct
+			scanElem = reflect.New(elemType.Elem()).Elem() // Struct
+			elem = scanElem.Addr() // *Struct
+		} else {
+			// elemType is Struct
+			scanElem = reflect.New(elemType).Elem()
+			elem = scanElem
+		}
 		
 		scanArgs := make([]interface{}, len(columns))
 		for i, colName := range columns {
 			fieldName, ok := colToField[colName]
 			if ok {
-				scanArgs[i] = elem.FieldByName(fieldName).Addr().Interface()
+				// We scan into scanElem (the struct value)
+				f := scanElem.FieldByName(fieldName)
+				if f.IsValid() {
+					scanArgs[i] = f.Addr().Interface()
+				} else {
+					var ignore interface{}
+					scanArgs[i] = &ignore
+				}
 			} else {
 				// Column not in struct, ignore
 				var ignore interface{}
