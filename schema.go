@@ -164,6 +164,7 @@ func DataTypeOf(t reflect.Type) string {
 
 func ParseTagSetting(str string) map[string]string {
 	settings := map[string]string{}
+	str = strings.ReplaceAll(str, ",", ";")
 	tags := strings.Split(str, ";")
 	for _, value := range tags {
 		v := strings.Split(value, ":")

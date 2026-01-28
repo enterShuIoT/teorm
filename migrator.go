@@ -21,11 +21,20 @@ func (db *DB) AutoMigrate(dst interface{}) error {
 		tagDefs = append(tagDefs, fmt.Sprintf("%s %s", field.Name, field.Type))
 	}
 	
-	sql := fmt.Sprintf("CREATE STABLE IF NOT EXISTS %s (%s) TAGS (%s)", 
-		schema.Name, 
-		strings.Join(colDefs, ", "), 
-		strings.Join(tagDefs, ", "))
-		
+	var sql string
+	if len(tagDefs) > 0 {
+		sql = fmt.Sprintf("CREATE STABLE IF NOT EXISTS %s (%s) TAGS (%s)",
+			schema.Name,
+			strings.Join(colDefs, ", "),
+			strings.Join(tagDefs, ", "))
+	} else {
+		sql = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s)",
+			schema.Name,
+			strings.Join(colDefs, ", "))
+	}
+
+	fmt.Printf("[DEBUG] AutoMigrate SQL: %s\n", sql)
+
 	if _, err := db.DB.Exec(sql); err != nil {
 		return fmt.Errorf("failed to create stable %s: %w", schema.Name, err)
 	}
