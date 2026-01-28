@@ -361,7 +361,7 @@ func Explain(sqlStr string, args ...interface{}) string {
 		case []byte:
 			val = fmt.Sprintf("'%s'", string(v))
 		case time.Time:
-			val = fmt.Sprintf("'%s'", v.Format("2006-01-02 15:04:05.000"))
+			val = fmt.Sprintf("'%s'", v.Format(time.RFC3339Nano))
 		case nil:
 			val = "NULL"
 		default:
