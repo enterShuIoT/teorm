@@ -336,7 +336,7 @@ func formatTagValue(v interface{}) string {
 	case []byte:
 		return fmt.Sprintf("'%s'", string(val))
 	case time.Time:
-		return fmt.Sprintf("'%s'", val.Format("2006-01-02 15:04:05.000"))
+		return fmt.Sprintf("'%s'", val.Format(time.RFC3339Nano))
 	case nil:
 		return "NULL"
 	default:
@@ -361,7 +361,7 @@ func Explain(sqlStr string, args ...interface{}) string {
 		case []byte:
 			val = fmt.Sprintf("'%s'", string(v))
 		case time.Time:
-			val = fmt.Sprintf("'%s'", v.Format(time.RFC3339Nano))
+			val = fmt.Sprintf("'%s'", v.UTC().Format(time.RFC3339Nano))
 		case nil:
 			val = "NULL"
 		default:
