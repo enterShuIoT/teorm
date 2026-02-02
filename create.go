@@ -8,6 +8,151 @@ import (
 	"time"
 )
 
+func (db *DB) ForceUpdate(value interface{}) *DB {
+	tx := db.getInstance()
+
+	// Handle Slice
+	destValue := reflect.ValueOf(value)
+	if destValue.Kind() == reflect.Ptr {
+		destValue = destValue.Elem()
+	}
+
+	if destValue.Kind() == reflect.Slice {
+		// Group elements by TableName
+		type BatchGroup struct {
+			Schema   *Schema
+			Elements []reflect.Value
+		}
+		groups := make(map[string]*BatchGroup)
+
+		for i := 0; i < destValue.Len(); i++ {
+			elem := destValue.Index(i)
+
+			// Parse Schema & TableName
+			var elemInterface interface{}
+			if elem.Kind() == reflect.Struct && elem.CanAddr() {
+				elemInterface = elem.Addr().Interface()
+			} else {
+				elemInterface = elem.Interface()
+			}
+
+			schema := Parse(elemInterface)
+			tableName := tx.Statement.Table
+
+			if tableName == "" {
+				if schema.TableName != "" {
+					tableName = schema.TableName
+				} else if len(schema.Tags) == 0 {
+					tableName = schema.Name
+				}
+			}
+
+			if tableName == "" {
+				tx.AddError(fmt.Errorf("table name is required at index %d", i))
+				return tx
+			}
+
+			// Add to group
+			if _, ok := groups[tableName]; !ok {
+				groups[tableName] = &BatchGroup{
+					Schema:   schema,
+					Elements: []reflect.Value{},
+				}
+			}
+			groups[tableName].Elements = append(groups[tableName].Elements, elem)
+		}
+
+		// Execute batch insert per group
+		for tableName, group := range groups {
+			groupTx := tx.getInstance()
+			groupTx.Statement.Table = tableName
+			groupTx.forceBatchInsert(group.Elements, group.Schema)
+			if groupTx.Error != nil {
+				tx.AddError(groupTx.Error)
+			}
+		}
+
+		return tx
+	}
+
+	schema := Parse(value)
+
+	// Determine Table Name
+	if tx.Statement.Table == "" {
+		if schema.TableName != "" {
+			tx.Statement.Table = schema.TableName
+		} else if len(schema.Tags) == 0 {
+			tx.Statement.Table = schema.Name
+		}
+	}
+
+	if tx.Statement.Table == "" {
+		tx.AddError(fmt.Errorf("table name is required, use db.Table('name') or implement Tabler interface"))
+		return tx
+	}
+
+	// Single insert re-using batch logic
+	tx.forceBatchInsert([]reflect.Value{destValue}, schema)
+	return tx
+}
+
+func (db *DB) forceBatchInsert(elements []reflect.Value, schema *Schema) {
+	if len(elements) == 0 {
+		return
+	}
+
+	var tagValues []interface{}
+	
+	firstElem := elements[0]
+	if firstElem.Kind() == reflect.Ptr {
+		firstElem = firstElem.Elem()
+	}
+
+	// 1. Prepare Metadata (Tags) from first element
+	for _, field := range schema.Tags {
+		fVal := firstElem.FieldByName(field.StructFieldName)
+		tagValues = append(tagValues, fVal.Interface())
+	}
+
+	// 2. Use ALL columns for ForceUpdate
+	var colNames []string
+	for _, field := range schema.Cols {
+		colNames = append(colNames, field.Name)
+	}
+
+	// Construct SQL
+	var sqlStr string
+
+	if len(tagValues) > 0 {
+		var tagValStrs []string
+		for _, tv := range tagValues {
+			tagValStrs = append(tagValStrs, formatTagValue(tv))
+		}
+
+		sqlStr = fmt.Sprintf("INSERT INTO %s (%s) USING %s TAGS (%s) VALUES %s",
+			db.Statement.Table,
+			strings.Join(colNames, ", "),
+			schema.Name,
+			strings.Join(tagValStrs, ", "),
+			buildInlinedValues(elements, schema, colNames),
+		)
+	} else {
+		sqlStr = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s",
+			db.Statement.Table,
+			strings.Join(colNames, ", "),
+			buildInlinedValues(elements, schema, colNames),
+		)
+	}
+
+	fmt.Fprintf(os.Stderr, "[DEBUG] Executing ForceUpdate SQL: %s\n", sqlStr)
+
+	_, err := db.DB.Exec(sqlStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Error executing SQL: %v\n", err)
+		db.AddError(err)
+	}
+}
+
 // Create inserts value into database
 func (db *DB) Create(value interface{}) *DB {
 	tx := db.getInstance()
