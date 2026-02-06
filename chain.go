@@ -30,8 +30,16 @@ func (db *DB) Select(query interface{}, args ...interface{}) *DB {
 
 func (db *DB) Order(value interface{}) *DB {
 	tx := db.getInstance()
-    if str, ok := value.(string); ok {
-        tx.Statement.Order = str
-    }
+	if str, ok := value.(string); ok {
+		tx.Statement.Order = str
+	}
+	return tx
+}
+
+func (db *DB) Group(value interface{}) *DB {
+	tx := db.getInstance()
+	if str, ok := value.(string); ok {
+		tx.Statement.Group = str
+	}
 	return tx
 }

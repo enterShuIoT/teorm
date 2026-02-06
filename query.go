@@ -32,17 +32,21 @@ func (db *DB) Find(dest interface{}) *DB {
 	whereClause, args := tx.Statement.BuildCondition()
 
 	sql := fmt.Sprintf("SELECT %s FROM %s%s", selectClause, tableName, whereClause)
-	
+
 	if tx.Statement.Order != "" {
 		sql += " ORDER BY " + tx.Statement.Order
 	}
-	
+
 	if tx.Statement.LimitVal > 0 {
 		sql += fmt.Sprintf(" LIMIT %d", tx.Statement.LimitVal)
 	}
-	
+
 	if tx.Statement.OffsetVal > 0 {
 		sql += fmt.Sprintf(" OFFSET %d", tx.Statement.OffsetVal)
+	}
+
+	if tx.Statement.Group != "" {
+		sql += " GROUP BY " + tx.Statement.Group
 	}
 
 	// Optimization: Inline arguments to avoid driver binding issues
@@ -63,16 +67,16 @@ func (db *DB) Find(dest interface{}) *DB {
 
 	destValue := reflect.Indirect(reflect.ValueOf(dest))
 	destType := destValue.Type()
-	
+
 	isSlice := destValue.Kind() == reflect.Slice
-	
+
 	var elemType reflect.Type
 	if isSlice {
 		elemType = destType.Elem()
 	} else {
 		elemType = destType
 	}
-	
+
 	// Map columns to struct fields
 	// We need to find the struct field for each column
 	// Use schema to map column name to struct field
@@ -80,27 +84,27 @@ func (db *DB) Find(dest interface{}) *DB {
 	for _, field := range schema.Fields {
 		colToField[field.Name] = field.StructFieldName
 	}
-	
+
 	// Handle Tags as well (they are in schema.Fields)
 
 	for rows.Next() {
 		// Create a new instance of the element
 		// elemType is usually *Struct or Struct
 		// If elemType is *Struct, we need to create Struct then take Addr
-		
+
 		var elem reflect.Value
 		var scanElem reflect.Value // The struct we scan into
-		
+
 		if elemType.Kind() == reflect.Ptr {
 			// elemType is *Struct
 			scanElem = reflect.New(elemType.Elem()).Elem() // Struct
-			elem = scanElem.Addr() // *Struct
+			elem = scanElem.Addr()                         // *Struct
 		} else {
 			// elemType is Struct
 			scanElem = reflect.New(elemType).Elem()
 			elem = scanElem
 		}
-		
+
 		scanArgs := make([]interface{}, len(columns))
 		for i, colName := range columns {
 			fieldName, ok := colToField[colName]
